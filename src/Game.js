@@ -180,6 +180,41 @@ export class Game {
       this.player.shield = true;
     }
 
+    // Power-up activation callbacks
+    this.player.onPowerUpActivated = (type) => {
+      const flashColors = { BOOST: 0xff7700, SHIELD: 0x0099ff, MISSILE: 0xff2200, EMP: 0xbb00ff, REPAIR: 0x00ee44 };
+      if (flashColors[type]) this.hud.showFlash(flashColors[type], 0.45);
+    };
+
+    this.player.onMissileActivated = () => {
+      if (!this.levelManager) return;
+      const { missiles } = this.levelManager.getActiveObjects();
+      const playerPos = this.player.group.position;
+      let nearest = null, nearestDist = Infinity;
+      for (const m of missiles) {
+        if (!m.alive) continue;
+        const d = playerPos.distanceTo(m.getPosition());
+        if (d < nearestDist) { nearestDist = d; nearest = m; }
+      }
+      if (nearest) {
+        this._createExplosion(nearest.getPosition().clone());
+        nearest.dispose();
+        this.hud.showMessage('SAM DESTROYED!', 1400);
+      } else {
+        this.hud.showMessage('NO SAM IN RANGE', 1200);
+      }
+    };
+
+    this.player.onEMPActivated = () => {
+      if (!this.levelManager) return;
+      const { missiles } = this.levelManager.getActiveObjects();
+      let count = 0;
+      for (const m of missiles) {
+        if (m.alive) { m.applyEMP(5); count++; }
+      }
+      this.hud.showMessage(count > 0 ? `EMP — ${count} SAM${count > 1 ? 's' : ''} SLOWED` : 'EMP FIRED — NO SAMs', 1600);
+    };
+
     // Set initial respawn position
     this.player.setRespawnAt(new THREE.Vector3(0, 100, 0));
 
@@ -398,6 +433,7 @@ export class Game {
     }
 
     // Player vs power-ups (sphere check)
+    const puFlashColors = { BOOST: 0xff7700, SHIELD: 0x0099ff, MISSILE: 0xff2200, EMP: 0xbb00ff, REPAIR: 0x00ee44 };
     for (const pu of powerUps) {
       if (pu.collected) continue;
       const dist = playerPos.distanceTo(pu.getPosition());
@@ -405,6 +441,7 @@ export class Game {
         pu.collect();
         this.player.collectPowerUp(pu.type);
         this.hud.showMessage(`${pu.type} COLLECTED!`, 1200);
+        this.hud.showFlash(puFlashColors[pu.type] || 0xffffff, 0.5);
       }
     }
   }
@@ -545,6 +582,8 @@ export class Game {
       maxHealth: this.player.maxHealth,
       activePowerUp: this.player.activePowerUp,
       pendingPowerUp: this.player.pendingPowerUp,
+      powerUpTimer: this.player.powerUpTimer,
+      powerUpMaxTimer: this.player.powerUpMaxTimer,
       raceTime: this._raceTime
     });
   }

@@ -4,6 +4,7 @@ export class HUD {
     this.visible = false;
     this._countdownTimeout = null;
     this._messageTimeout = null;
+    this._flashTimeout = null;
     this._el = null;
     this._arrowEl = null;
     this._pauseEl = null;
@@ -11,6 +12,14 @@ export class HUD {
     this._messageEl = null;
     this._milestoneEl = null;
     this._milestoneTimeout = null;
+    this._flashEl = null;
+    this._puPanel = null;
+    this._puIcon = null;
+    this._puName = null;
+    this._puDesc = null;
+    this._puBarWrap = null;
+    this._puBar = null;
+    this._puHint = null;
     this._build();
   }
 
@@ -42,7 +51,37 @@ export class HUD {
           0%, 100% { text-shadow: 0 0 15px #ffcc00, 0 0 30px #ffcc00; }
           50% { text-shadow: 0 0 30px #ffcc00, 0 0 60px #ffcc00, 0 0 90px #ffcc00; }
         }
+        @keyframes puHintPulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.35; }
+        }
+        @keyframes puActivePulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.7; }
+        }
       </style>
+
+      <div id="hud-controls-hint" style="
+        position:absolute;
+        bottom:20px;
+        left:16px;
+        background:rgba(0,0,0,0.38);
+        border-left:3px solid rgba(0,255,200,0.5);
+        padding:8px 14px;
+        border-radius:0 6px 6px 0;
+        font-size:12px;
+        line-height:1.9;
+        color:rgba(255,255,255,0.75);
+        pointer-events:none;
+        letter-spacing:1px;
+      ">
+        <div><span style="color:#00ffcc;font-weight:bold;">W / ↑</span>&nbsp;&nbsp;Fly Up</div>
+        <div><span style="color:#00ffcc;font-weight:bold;">S / ↓</span>&nbsp;&nbsp;Fly Down</div>
+        <div><span style="color:#00ffcc;font-weight:bold;">A / ←</span>&nbsp;&nbsp;Strafe Left</div>
+        <div><span style="color:#00ffcc;font-weight:bold;">D / →</span>&nbsp;&nbsp;Strafe Right</div>
+        <div><span style="color:#ffcc00;font-weight:bold;">SPACE</span>&nbsp;Use Power-Up</div>
+        <div><span style="color:#ff6688;font-weight:bold;">ESC</span>&nbsp;&nbsp;&nbsp;Pause</div>
+      </div>
 
       <div id="hud-top-left" style="position:absolute;top:16px;left:16px;">
         <div id="hud-level" style="color:#00ffcc;font-size:22px;font-weight:bold;text-shadow:0 0 10px #00ffcc;">LEVEL 1</div>
@@ -55,18 +94,36 @@ export class HUD {
         <div id="hud-health" style="margin-top:6px;"></div>
       </div>
 
-      <div id="hud-bottom-center" style="position:absolute;bottom:20px;left:50%;transform:translateX(-50%);text-align:center;">
-        <div id="hud-powerup" style="
-          background:rgba(0,0,0,0.5);
-          border:2px solid #444;
-          border-radius:10px;
-          padding:6px 18px;
-          color:#888;
-          font-size:14px;
-          min-width:120px;
-          text-shadow:0 0 6px #000;
-        ">NO POWER-UP</div>
+      <div id="hud-bottom-center" style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);text-align:center;">
+        <div id="hud-powerup-panel" style="
+          background:rgba(0,0,0,0.62);
+          border:2px solid #333;
+          border-radius:14px;
+          padding:10px 24px 10px;
+          min-width:180px;
+          max-width:240px;
+          position:relative;
+          transition:border-color 0.25s,box-shadow 0.25s;
+        ">
+          <div style="display:flex;align-items:center;justify-content:center;gap:9px;">
+            <span id="hud-pu-icon" style="font-size:22px;line-height:1;"></span>
+            <span id="hud-pu-name" style="color:#444;font-size:14px;font-weight:bold;letter-spacing:2px;transition:color 0.25s;">NO POWER-UP</span>
+          </div>
+          <div id="hud-pu-desc" style="color:#444;font-size:10px;letter-spacing:1px;margin-top:3px;min-height:13px;transition:color 0.25s;"></div>
+          <div id="hud-pu-bar-wrap" style="margin-top:8px;height:5px;background:rgba(255,255,255,0.08);border-radius:3px;display:none;">
+            <div id="hud-pu-bar" style="height:100%;width:100%;border-radius:3px;background:#00ff00;transition:background 0.3s;"></div>
+          </div>
+          <div id="hud-pu-hint" style="margin-top:6px;font-size:11px;letter-spacing:2px;color:#444;display:none;animation:puHintPulse 1s ease-in-out infinite;">▶ SPACE TO USE</div>
+        </div>
       </div>
+
+      <div id="hud-flash" style="
+        position:absolute;
+        top:0;left:0;width:100%;height:100%;
+        pointer-events:none;
+        opacity:0;
+        background:rgba(255,255,255,0);
+      "></div>
 
       <div id="hud-arrow" style="
         position:absolute;
@@ -204,6 +261,14 @@ export class HUD {
     this._respawnEl = el.querySelector('#hud-respawn');
     this._respawnCountEl = el.querySelector('#hud-respawn-count');
     this._milestoneEl = el.querySelector('#hud-milestone');
+    this._flashEl = el.querySelector('#hud-flash');
+    this._puPanel  = el.querySelector('#hud-powerup-panel');
+    this._puIcon   = el.querySelector('#hud-pu-icon');
+    this._puName   = el.querySelector('#hud-pu-name');
+    this._puDesc   = el.querySelector('#hud-pu-desc');
+    this._puBarWrap = el.querySelector('#hud-pu-bar-wrap');
+    this._puBar    = el.querySelector('#hud-pu-bar');
+    this._puHint   = el.querySelector('#hud-pu-hint');
 
     // Button hover effects
     ['pause-resume-btn', 'pause-quit-btn'].forEach(id => {
@@ -260,10 +325,21 @@ export class HUD {
     if (this._milestoneEl) this._milestoneEl.style.display = 'none';
   }
 
+  // Display metadata for each power-up type
+  static get PU_DISPLAY() {
+    return {
+      BOOST:   { color: '#ff7700', icon: '⚡',  desc: '2× SPEED FOR 6s'       },
+      SHIELD:  { color: '#0099ff', icon: '🛡',  desc: 'ABSORB 1 HIT · 20s'    },
+      MISSILE: { color: '#ff2200', icon: '🚀',  desc: 'DESTROY NEAREST SAM'    },
+      EMP:     { color: '#bb00ff', icon: '⚡⚡', desc: 'SLOW ALL SAMs · 5s'     },
+      REPAIR:  { color: '#00ee44', icon: '♥',   desc: 'RESTORE 1 HEART'        },
+    };
+  }
+
   update(gameState) {
     if (!this.visible) return;
 
-    const { level, distance, speed, health, maxHealth, activePowerUp, pendingPowerUp, raceTime } = gameState;
+    const { level, distance, speed, health, maxHealth, activePowerUp, pendingPowerUp, powerUpTimer, powerUpMaxTimer, raceTime } = gameState;
 
     // Level
     const levelEl = this._el.querySelector('#hud-level');
@@ -288,28 +364,55 @@ export class HUD {
       hpEl.innerHTML = hearts;
     }
 
-    // Power-up
-    const puEl = this._el.querySelector('#hud-powerup');
-    if (puEl) {
-      if (activePowerUp) {
-        const colors = { BOOST: '#ff8800', SHIELD: '#0088ff', MISSILE: '#ff0000', EMP: '#aa00ff', REPAIR: '#00ff44' };
-        const c = colors[activePowerUp] || '#ffffff';
-        puEl.style.borderColor = c;
-        puEl.style.color = c;
-        puEl.style.textShadow = `0 0 8px ${c}`;
-        puEl.textContent = activePowerUp;
-      } else if (pendingPowerUp) {
-        const colors = { BOOST: '#ff8800', SHIELD: '#0088ff', MISSILE: '#ff0000', EMP: '#aa00ff', REPAIR: '#00ff44' };
-        const c = colors[pendingPowerUp] || '#ffffff';
-        puEl.style.borderColor = c;
-        puEl.style.color = c;
-        puEl.style.textShadow = `0 0 8px ${c}`;
-        puEl.textContent = `[${pendingPowerUp}] - SPACE`;
+    // Power-up panel
+    if (this._puPanel) {
+      const PUD = HUD.PU_DISPLAY;
+      if (activePowerUp && PUD[activePowerUp]) {
+        const m = PUD[activePowerUp];
+        this._puPanel.style.borderColor = m.color;
+        this._puPanel.style.boxShadow = `0 0 14px ${m.color}88`;
+        this._puIcon.textContent = m.icon;
+        this._puName.style.color = m.color;
+        this._puName.textContent = activePowerUp + ' ◀ ACTIVE';
+        this._puName.style.animation = 'puActivePulse 0.7s ease-in-out infinite';
+        this._puDesc.style.color = m.color + 'bb';
+        this._puDesc.textContent = m.desc;
+        if (this._puBarWrap && this._puBar && powerUpMaxTimer > 0) {
+          this._puBarWrap.style.display = 'block';
+          const ratio = Math.max(0, Math.min(1, (powerUpTimer || 0) / powerUpMaxTimer));
+          this._puBar.style.width = (ratio * 100) + '%';
+          this._puBar.style.background = m.color;
+        } else if (this._puBarWrap) {
+          this._puBarWrap.style.display = 'none';
+        }
+        if (this._puHint) this._puHint.style.display = 'none';
+
+      } else if (pendingPowerUp && PUD[pendingPowerUp]) {
+        const m = PUD[pendingPowerUp];
+        this._puPanel.style.borderColor = m.color;
+        this._puPanel.style.boxShadow = `0 0 8px ${m.color}55`;
+        this._puIcon.textContent = m.icon;
+        this._puName.style.color = m.color;
+        this._puName.textContent = pendingPowerUp;
+        this._puName.style.animation = '';
+        this._puDesc.style.color = '#888';
+        this._puDesc.textContent = m.desc;
+        if (this._puBarWrap) this._puBarWrap.style.display = 'none';
+        if (this._puHint) {
+          this._puHint.style.display = 'block';
+          this._puHint.style.color = m.color;
+        }
+
       } else {
-        puEl.style.borderColor = '#444';
-        puEl.style.color = '#888';
-        puEl.style.textShadow = 'none';
-        puEl.textContent = 'NO POWER-UP';
+        this._puPanel.style.borderColor = '#333';
+        this._puPanel.style.boxShadow = 'none';
+        this._puIcon.textContent = '';
+        this._puName.style.color = '#444';
+        this._puName.textContent = 'NO POWER-UP';
+        this._puName.style.animation = '';
+        this._puDesc.textContent = '';
+        if (this._puBarWrap) this._puBarWrap.style.display = 'none';
+        if (this._puHint) this._puHint.style.display = 'none';
       }
     }
 
@@ -358,6 +461,19 @@ export class HUD {
     this._messageTimeout = setTimeout(() => {
       this._messageEl.style.display = 'none';
     }, duration);
+  }
+
+  showFlash(hexColor, duration = 0.4) {
+    if (!this._flashEl) return;
+    const r = (hexColor >> 16) & 0xff;
+    const g = (hexColor >> 8) & 0xff;
+    const b = hexColor & 0xff;
+    this._flashEl.style.transition = 'none';
+    this._flashEl.style.background = `rgba(${r},${g},${b},0.38)`;
+    this._flashEl.style.opacity = '1';
+    void this._flashEl.offsetWidth; // force reflow
+    this._flashEl.style.transition = `opacity ${duration}s ease-out`;
+    this._flashEl.style.opacity = '0';
   }
 
   _ordinal(n) {

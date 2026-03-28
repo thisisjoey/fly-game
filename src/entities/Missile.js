@@ -9,6 +9,8 @@ export class Missile {
     this._timer = 0;
     this.maxLife = 12;
     this.radius = 4;
+    this._empSlowed = false;
+    this._empTimer = 0;
 
     const group = new THREE.Group();
 
@@ -48,10 +50,29 @@ export class Missile {
     scene.add(group);
   }
 
+  applyEMP(duration) {
+    this._empSlowed = true;
+    this._empTimer = duration;
+    // Visual: exhaust turns purple when slowed
+    if (this._exhaustMesh) this._exhaustMesh.material.color.setHex(0xaa00ff);
+  }
+
   update(dt, playerPosition) {
     if (!this.alive) return;
     this._timer += dt;
     if (this._timer > this.maxLife) { this.dispose(); return; }
+
+    // EMP slow timer
+    if (this._empSlowed) {
+      this._empTimer -= dt;
+      if (this._empTimer <= 0) {
+        this._empSlowed = false;
+        if (this._exhaustMesh) this._exhaustMesh.material.color.setHex(0xff6600);
+      }
+    }
+
+    const effectiveSpeed = this._empSlowed ? this.speed * 0.25 : this.speed;
+    const effectiveTurn  = this._empSlowed ? this.turnSpeed * 0.25 : this.turnSpeed;
 
     // Steer toward player
     const toPlayer = playerPosition.clone().sub(this.group.position).normalize();
@@ -61,12 +82,12 @@ export class Missile {
     if (axisLen > 0.001) {
       axis.normalize();
       const angle = Math.acos(Math.max(-1, Math.min(1, fwd.dot(toPlayer))));
-      const q = new THREE.Quaternion().setFromAxisAngle(axis, Math.min(angle, this.turnSpeed * dt));
+      const q = new THREE.Quaternion().setFromAxisAngle(axis, Math.min(angle, effectiveTurn * dt));
       this.group.quaternion.premultiply(q);
     }
 
     const fwdNow = new THREE.Vector3(0, 0, 1).applyQuaternion(this.group.quaternion);
-    this.group.position.addScaledVector(fwdNow, this.speed * dt);
+    this.group.position.addScaledVector(fwdNow, effectiveSpeed * dt);
 
     // Pulse exhaust
     const pulse = 0.8 + 0.4 * Math.sin(this._timer * 20);

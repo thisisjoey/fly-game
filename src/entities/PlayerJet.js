@@ -9,12 +9,15 @@ export class PlayerJet extends Jet {
   constructor(scene, inputManager) {
     super(scene, 0x00ccff);
     this.inputManager = inputManager;
-    this.baseSpeed = 180;      // forward speed (increases per level)
-    this.currentSpeed = 180;
-    this.strafeSpeed = 210;    // left/right speed
-    this.verticalSpeed = 165;  // up/down speed
+    this.baseSpeed = 340;      // forward speed (increases per level)
+    this.currentSpeed = 340;
+    this.strafeSpeed = 320;    // left/right speed
+    this.verticalSpeed = 280;  // up/down speed
     this.pendingPowerUp = null;
     this.powerUpsCollected = 0;
+    this.onMissileActivated = null;
+    this.onEMPActivated = null;
+    this.onPowerUpActivated = null;
     this._empSlowed = false;
     this._empTimer = 0;
     this._boostMult = 1.8;
@@ -30,6 +33,13 @@ export class PlayerJet extends Jet {
   setLevelSpeed(speed) {
     this.baseSpeed = speed;
     this.currentSpeed = speed;
+  }
+
+  applyPowerUp(type) {
+    if (this.onPowerUpActivated) this.onPowerUpActivated(type);
+    if (type === 'MISSILE' && this.onMissileActivated) this.onMissileActivated();
+    else if (type === 'EMP' && this.onEMPActivated) this.onEMPActivated();
+    super.applyPowerUp(type);
   }
 
   collectPowerUp(type) {
@@ -57,11 +67,11 @@ export class PlayerJet extends Jet {
     const input = this.inputManager;
     const joystick = input.getJoystick();
 
-    // Strafe left/right
+    // Strafe left/right — X is flipped due to camera lookAt orientation
     let strafeX = 0;
-    if (input.isDown('KeyA') || input.isDown('ArrowLeft'))       strafeX = -1;
-    else if (input.isDown('KeyD') || input.isDown('ArrowRight')) strafeX = 1;
-    else if (Math.abs(joystick.x) > 0.1)                        strafeX = joystick.x;
+    if (input.isDown('KeyA') || input.isDown('ArrowLeft'))       strafeX = 1;
+    else if (input.isDown('KeyD') || input.isDown('ArrowRight')) strafeX = -1;
+    else if (Math.abs(joystick.x) > 0.1)                        strafeX = -joystick.x;
 
     // Up/down
     let vertY = 0;

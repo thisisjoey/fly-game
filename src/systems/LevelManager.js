@@ -29,45 +29,45 @@ const LEVEL_THRESHOLDS = [
 
 const LEVEL_CONFIGS = [
   // L1 - empty corridor
-  { level: 1, pattern: 'empty', speed: 180, gapWidth: 160, moveSpeed: 0, missileFreq: 0, milestone: null },
+  { level: 1,  pattern: 'empty',     speed: 340, gapWidth: 160, moveSpeed: 0,  missileFreq: 0,  milestone: null },
   // L2 - sparse pillars
-  { level: 2, pattern: 'pillars', speed: 190, gapWidth: 160, moveSpeed: 0, missileFreq: 0, milestone: null },
+  { level: 2,  pattern: 'pillars',   speed: 360, gapWidth: 160, moveSpeed: 0,  missileFreq: 0,  milestone: null },
   // L3 - gates
-  { level: 3, pattern: 'gate', speed: 200, gapWidth: 150, moveSpeed: 0, missileFreq: 0, milestone: null },
+  { level: 3,  pattern: 'gate',      speed: 380, gapWidth: 150, moveSpeed: 0,  missileFreq: 0,  milestone: null },
   // L4 - denser gates + pillars
-  { level: 4, pattern: 'mixed', speed: 210, gapWidth: 140, moveSpeed: 0, missileFreq: 0, milestone: null },
+  { level: 4,  pattern: 'mixed',     speed: 400, gapWidth: 140, moveSpeed: 0,  missileFreq: 0,  milestone: null },
   // L5 - MILESTONE + moving buildings
-  { level: 5, pattern: 'mixed', speed: 225, gapWidth: 130, moveSpeed: 30, missileFreq: 0, milestone: { name: 'LEVEL 5', subtitle: 'SECTOR 1 CLEARED!' } },
+  { level: 5,  pattern: 'mixed',     speed: 425, gapWidth: 130, moveSpeed: 40, missileFreq: 0,  milestone: { name: 'LEVEL 5',  subtitle: 'SECTOR 1 CLEARED!' } },
   // L6 - mixed moving + static
-  { level: 6, pattern: 'mixed', speed: 240, gapWidth: 125, moveSpeed: 35, missileFreq: 0, milestone: null },
+  { level: 6,  pattern: 'mixed',     speed: 445, gapWidth: 125, moveSpeed: 45, missileFreq: 0,  milestone: null },
   // L7 - first missiles
-  { level: 7, pattern: 'mixed', speed: 255, gapWidth: 120, moveSpeed: 35, missileFreq: 18, milestone: null },
+  { level: 7,  pattern: 'mixed',     speed: 465, gapWidth: 120, moveSpeed: 45, missileFreq: 18, milestone: null },
   // L8 - dense maze + missiles
-  { level: 8, pattern: 'maze', speed: 265, gapWidth: 115, moveSpeed: 40, missileFreq: 15, milestone: null },
+  { level: 8,  pattern: 'maze',      speed: 485, gapWidth: 115, moveSpeed: 50, missileFreq: 15, milestone: null },
   // L9 - tight corridors
-  { level: 9, pattern: 'gauntlet', speed: 275, gapWidth: 110, moveSpeed: 40, missileFreq: 14, milestone: null },
+  { level: 9,  pattern: 'gauntlet',  speed: 505, gapWidth: 110, moveSpeed: 50, missileFreq: 14, milestone: null },
   // L10 - MILESTONE
-  { level: 10, pattern: 'gauntlet', speed: 290, gapWidth: 105, moveSpeed: 45, missileFreq: 13, milestone: { name: 'LEVEL 10', subtitle: 'SECTOR 2 CLEARED!' } },
+  { level: 10, pattern: 'gauntlet',  speed: 530, gapWidth: 105, moveSpeed: 55, missileFreq: 13, milestone: { name: 'LEVEL 10', subtitle: 'SECTOR 2 CLEARED!' } },
   // L11 - fast moving walls
-  { level: 11, pattern: 'maze', speed: 305, gapWidth: 100, moveSpeed: 55, missileFreq: 12, milestone: null },
-  // L12 - spiral-ish (gate + gauntlet mix)
-  { level: 12, pattern: 'gauntlet', speed: 315, gapWidth: 98, moveSpeed: 58, missileFreq: 11, milestone: null },
+  { level: 11, pattern: 'maze',      speed: 550, gapWidth: 100, moveSpeed: 65, missileFreq: 12, milestone: null },
+  // L12 - spiral-ish
+  { level: 12, pattern: 'gauntlet',  speed: 570, gapWidth: 98,  moveSpeed: 68, missileFreq: 11, milestone: null },
   // L13 - gate + pillars combined
-  { level: 13, pattern: 'maze', speed: 325, gapWidth: 95, moveSpeed: 60, missileFreq: 10, milestone: null },
+  { level: 13, pattern: 'maze',      speed: 590, gapWidth: 95,  moveSpeed: 70, missileFreq: 10, milestone: null },
   // L14 - gauntlet
-  { level: 14, pattern: 'hell', speed: 335, gapWidth: 92, moveSpeed: 62, missileFreq: 10, milestone: null },
+  { level: 14, pattern: 'hell',      speed: 610, gapWidth: 92,  moveSpeed: 72, missileFreq: 10, milestone: null },
   // L15 - MILESTONE
-  { level: 15, pattern: 'hell', speed: 350, gapWidth: 90, moveSpeed: 65, missileFreq: 9, milestone: { name: 'LEVEL 15', subtitle: 'SECTOR 3 CLEARED!' } },
+  { level: 15, pattern: 'hell',      speed: 635, gapWidth: 90,  moveSpeed: 75, missileFreq: 9,  milestone: { name: 'LEVEL 15', subtitle: 'SECTOR 3 CLEARED!' } },
   // L16 - hell mode
-  { level: 16, pattern: 'hell', speed: 365, gapWidth: 88, moveSpeed: 68, missileFreq: 8, milestone: null },
+  { level: 16, pattern: 'hell',      speed: 660, gapWidth: 88,  moveSpeed: 78, missileFreq: 8,  milestone: null },
   // L17 - fast missiles + dense
-  { level: 17, pattern: 'nightmare', speed: 380, gapWidth: 85, moveSpeed: 70, missileFreq: 7, milestone: null },
+  { level: 17, pattern: 'nightmare', speed: 685, gapWidth: 85,  moveSpeed: 80, missileFreq: 7,  milestone: null },
   // L18 - near-impossible corridors
-  { level: 18, pattern: 'nightmare', speed: 395, gapWidth: 80, moveSpeed: 72, missileFreq: 6, milestone: null },
+  { level: 18, pattern: 'nightmare', speed: 710, gapWidth: 80,  moveSpeed: 82, missileFreq: 6,  milestone: null },
   // L19 - nightmare
-  { level: 19, pattern: 'nightmare', speed: 410, gapWidth: 75, moveSpeed: 75, missileFreq: 5, milestone: null },
+  { level: 19, pattern: 'nightmare', speed: 740, gapWidth: 75,  moveSpeed: 85, missileFreq: 5,  milestone: null },
   // L20 - LEGEND
-  { level: 20, pattern: 'nightmare', speed: 430, gapWidth: 70, moveSpeed: 80, missileFreq: 4, milestone: { name: 'LEVEL 20', subtitle: 'LEGEND!' } },
+  { level: 20, pattern: 'nightmare', speed: 780, gapWidth: 70,  moveSpeed: 90, missileFreq: 4,  milestone: { name: 'LEVEL 20', subtitle: 'LEGEND!' } },
 ];
 
 const CHUNK_INTERVAL = 220;
