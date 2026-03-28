@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 
+const SLAB_LENGTH = 2000; // Z length of each background slab
+
 export class Environment {
   constructor(scene) {
     this.scene = scene;
@@ -7,11 +9,10 @@ export class Environment {
     this._speedLineMat = null;
     this._speedLinesGeo = null;
     this._speedLines = null;
-    this._buildingData = []; // [{x, z, w, d, h}] for collision detection
+    this._slabA = null;
+    this._slabB = null;
     this._setup();
   }
-
-  getBuildingData() { return this._buildingData; }
 
   _setup() {
     // Warm hazy sunlight — matches the sandy city sky
@@ -29,131 +30,92 @@ export class Environment {
     this.scene.add(fill);
 
     this._createGround();
-    this._createCity();
+    this._slabA = this._createBackgroundSlab(0);
+    this._slabB = this._createBackgroundSlab(SLAB_LENGTH);
     this._createSpeedLines();
   }
 
   _createGround() {
-    const geo = new THREE.PlaneGeometry(8000, 8000, 1, 1);
-    const mat = new THREE.MeshPhongMaterial({
-      color: 0xc8b878,
-      shininess: 5,
-      emissive: 0x111000
-    });
-    const ground = new THREE.Mesh(geo, mat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = 0;
-    this.scene.add(ground);
+    // Very long ground plane in Z direction
+    const geo = new THREE.PlaneGeometry(3000, 80000);
+    const mat = new THREE.MeshPhongMaterial({ color: 0xc8b878, shininess: 3 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(0, 0, 40000);
+    this.scene.add(mesh);
   }
 
-  _createCity() {
-    // Use InstancedMesh for performance — single draw call for all buildings
-    const buildingGeo = new THREE.BoxGeometry(1, 1, 1); // unit cube, scaled per instance
-
-    // Two building material colors for variety
-    const matA = new THREE.MeshPhongMaterial({ color: 0xc8b882, shininess: 15, emissive: 0x080600 });
-    const matB = new THREE.MeshPhongMaterial({ color: 0xb8a870, shininess: 8,  emissive: 0x060500 });
-
-    const countA = 600;
-    const countB = 400;
-    const meshA = new THREE.InstancedMesh(buildingGeo, matA, countA);
-    const meshB = new THREE.InstancedMesh(buildingGeo, matB, countB);
-    meshA.frustumCulled = false;
-    meshB.frustumCulled = false;
+  // Creates a group of background buildings for one slab (offset by startZ)
+  _createBackgroundSlab(startZ) {
+    const count = 160;
+    const geo = new THREE.BoxGeometry(1, 1, 1);
+    const matA = new THREE.MeshPhongMaterial({ color: 0xc8b882, shininess: 8 });
+    const mesh = new THREE.InstancedMesh(geo, matA, count);
+    mesh.frustumCulled = false;
 
     const dummy = new THREE.Object3D();
-    let idxA = 0, idxB = 0;
+    let idx = 0;
 
-    // Track checkpoint rough positions to avoid placing buildings on top of them
-    const clearZones = [
-      { x: 0,    z: -600 }, { x: 350, z: -350 }, { x: 600, z: 0 },
-      { x: 350,  z: 350  }, { x: 0,   z: 600  }, { x: -350, z: 350 },
-      { x: -600, z: 0    }, { x: -350, z: -350 },
-    ];
+    for (let i = 0; i < count; i++) {
+      // Place buildings outside the obstacle corridor (|x| > 300)
+      const side = Math.random() < 0.5 ? 1 : -1;
+      const x = side * (320 + Math.random() * 450);
+      const z = startZ + Math.random() * SLAB_LENGTH;
+      const w = 30 + Math.random() * 100;
+      const d = 30 + Math.random() * 100;
+      const h = 30 + Math.pow(Math.random(), 1.5) * 350;
 
-    const cols = 36;
-    const rows = 36;
-    const spacingX = 120;
-    const spacingZ = 120;
-    const startX = -(cols / 2) * spacingX;
-    const startZ = -(rows / 2) * spacingZ;
-
-    for (let i = 0; i < cols; i++) {
-      for (let j = 0; j < rows; j++) {
-        if (idxA >= countA && idxB >= countB) break;
-
-        const bx = startX + i * spacingX + (Math.random() - 0.5) * 40;
-        const bz = startZ + j * spacingZ + (Math.random() - 0.5) * 40;
-
-        // Skip center area (spawn zone)
-        if (Math.abs(bx) < 80 && Math.abs(bz) < 80) continue;
-
-        // Skip if too close to a checkpoint
-        let nearCP = false;
-        for (const cp of clearZones) {
-          const dx = bx - cp.x, dz = bz - cp.z;
-          if (Math.sqrt(dx * dx + dz * dz) < 140) { nearCP = true; break; }
-        }
-        if (nearCP) continue;
-
-        const w = 25 + Math.random() * 70;
-        const d = 25 + Math.random() * 70;
-        // Taller buildings toward edges, shorter near center
-        const distFromCenter = Math.sqrt(bx * bx + bz * bz);
-        const heightBias = Math.min(1, distFromCenter / 800);
-        const h = 40 + Math.pow(Math.random(), 1.5) * (80 + heightBias * 320);
-
-        dummy.position.set(bx, h / 2, bz);
-        dummy.scale.set(w, h, d);
-        dummy.rotation.y = (Math.random() - 0.5) * 0.15;
-        dummy.updateMatrix();
-
-        if (Math.random() < 0.6 && idxA < countA) {
-          meshA.setMatrixAt(idxA++, dummy.matrix);
-        } else if (idxB < countB) {
-          meshB.setMatrixAt(idxB++, dummy.matrix);
-        } else if (idxA < countA) {
-          meshA.setMatrixAt(idxA++, dummy.matrix);
-        }
-
-        // Store bounds for collision detection
-        this._buildingData.push({ x: bx, z: bz, w, d, h });
-      }
+      dummy.position.set(x, h / 2, z);
+      dummy.scale.set(w, h, d);
+      dummy.rotation.y = (Math.random() - 0.5) * 0.2;
+      dummy.updateMatrix();
+      mesh.setMatrixAt(idx++, dummy.matrix);
     }
+    mesh.count = idx;
+    mesh.instanceMatrix.needsUpdate = true;
+    this.scene.add(mesh);
+    return { mesh, startZ, endZ: startZ + SLAB_LENGTH };
+  }
 
-    meshA.count = idxA;
-    meshB.count = idxB;
-    meshA.instanceMatrix.needsUpdate = true;
-    meshB.instanceMatrix.needsUpdate = true;
-
-    this.scene.add(meshA);
-    this.scene.add(meshB);
+  // Recycle slab to be ahead of player
+  _recycleSlab(slab, newStartZ) {
+    slab.startZ = newStartZ;
+    slab.endZ = newStartZ + SLAB_LENGTH;
+    // Re-generate positions for this slab
+    const dummy = new THREE.Object3D();
+    const count = slab.mesh.count;
+    for (let i = 0; i < count; i++) {
+      const side = Math.random() < 0.5 ? 1 : -1;
+      const x = side * (320 + Math.random() * 450);
+      const z = newStartZ + Math.random() * SLAB_LENGTH;
+      const w = 30 + Math.random() * 100;
+      const d = 30 + Math.random() * 100;
+      const h = 30 + Math.pow(Math.random(), 1.5) * 350;
+      dummy.position.set(x, h / 2, z);
+      dummy.scale.set(w, h, d);
+      dummy.rotation.y = (Math.random() - 0.5) * 0.2;
+      dummy.updateMatrix();
+      slab.mesh.setMatrixAt(i, dummy.matrix);
+    }
+    slab.mesh.instanceMatrix.needsUpdate = true;
   }
 
   _createSpeedLines() {
     const count = 250;
     const geo = new THREE.BufferGeometry();
     const positions = new Float32Array(count * 3);
-
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const radius = 20 + Math.random() * 100;
+      const radius = 20 + Math.random() * 120;
       positions[i * 3]     = Math.cos(angle) * radius;
-      positions[i * 3 + 1] = (Math.random() - 0.5) * 60;
+      positions[i * 3 + 1] = (Math.random() - 0.5) * 80;
       positions[i * 3 + 2] = (Math.random() - 0.5) * 600;
     }
-
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
     const mat = new THREE.PointsMaterial({
-      color: 0xffffff,
-      size: 1.5,
-      transparent: true,
-      opacity: 0.0,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
+      color: 0xffffff, size: 1.5, transparent: true, opacity: 0.0,
+      blending: THREE.AdditiveBlending, depthWrite: false
     });
-
     this._speedLines = new THREE.Points(geo, mat);
     this._speedLineMat = mat;
     this._speedLinesGeo = geo;
@@ -162,22 +124,29 @@ export class Environment {
 
   updateSpeedEffect(playerSpeed, maxSpeed) {
     if (!this._speedLineMat) return;
-    const ratio = Math.max(0, (playerSpeed - maxSpeed * 0.45) / (maxSpeed * 0.55));
+    const ratio = Math.max(0, (playerSpeed - maxSpeed * 0.4) / (maxSpeed * 0.6));
     this._speedLineMat.opacity = ratio * 0.65;
+  }
 
-    if (ratio > 0.05) {
-      const pos = this._speedLinesGeo.attributes.position;
-      const arr = pos.array;
-      const shift = playerSpeed * 0.004;
-      for (let i = 0; i < arr.length; i += 3) {
-        arr[i + 2] += shift;
-        if (arr[i + 2] > 300) arr[i + 2] -= 600;
-      }
-      pos.needsUpdate = true;
+  // Call each frame with player Z position
+  update(dt, playerZ) {
+    this._time += dt;
+
+    // Move speed lines with player (they're a local effect)
+    if (this._speedLines && playerZ !== undefined) {
+      this._speedLines.position.z = playerZ;
+    }
+
+    // Recycle background slabs as player passes them
+    if (this._slabA && playerZ !== undefined && playerZ > this._slabA.endZ - 200) {
+      this._recycleSlab(this._slabA, this._slabB.endZ);
+    }
+    if (this._slabB && playerZ !== undefined && playerZ > this._slabB.endZ - 200) {
+      this._recycleSlab(this._slabB, this._slabA.endZ);
     }
   }
 
-  update(dt) {
-    this._time += dt;
+  setSpeedLinesOpacity(opacity) {
+    if (this._speedLineMat) this._speedLineMat.opacity = opacity;
   }
 }

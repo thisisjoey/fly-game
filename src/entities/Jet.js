@@ -12,6 +12,7 @@ export class Jet {
     this.rollSpeed = 3.5;
     this.activePowerUp = null;
     this.powerUpTimer = 0;
+    this.powerUpMaxTimer = 0;
     this.shield = false;
     this.checkpointIndex = 0;
     this.lap = 0;
@@ -194,25 +195,35 @@ export class Jet {
   }
 
   applyPowerUp(type) {
-    this.activePowerUp = type;
     switch (type) {
       case 'BOOST':
-        this.powerUpTimer = 5.0;
+        this.activePowerUp = 'BOOST';
+        this.powerUpTimer = 6.0;
+        this.powerUpMaxTimer = 6.0;
         break;
       case 'SHIELD':
+        this.activePowerUp = 'SHIELD';
         this.shield = true;
-        this.powerUpTimer = 15.0;
+        this.powerUpTimer = 20.0;
+        this.powerUpMaxTimer = 20.0;
+        break;
+      case 'EMP':
+        this.activePowerUp = 'EMP';
+        this.powerUpTimer = 5.0;
+        this.powerUpMaxTimer = 5.0;
         break;
       case 'REPAIR':
+        // Instant — no active state
         this.health = Math.min(this.maxHealth, this.health + 1);
         this.activePowerUp = null;
         this.powerUpTimer = 0;
-        break;
-      case 'EMP':
-        this.powerUpTimer = 0;
+        this.powerUpMaxTimer = 0;
         break;
       case 'MISSILE':
+        // Instant — handled via callback in PlayerJet
+        this.activePowerUp = null;
         this.powerUpTimer = 0;
+        this.powerUpMaxTimer = 0;
         break;
     }
   }
