@@ -9,6 +9,8 @@ export class HUD {
     this._pauseEl = null;
     this._countdownEl = null;
     this._messageEl = null;
+    this._milestoneEl = null;
+    this._milestoneTimeout = null;
     this._build();
   }
 
@@ -24,14 +26,32 @@ export class HUD {
       pointer-events: none;
     `;
     el.innerHTML = `
+      <style>
+        @keyframes milestoneIn {
+          0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+          20%  { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
+          30%  { transform: translate(-50%, -50%) scale(1.0); }
+          80%  { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
+          100% { opacity: 0; transform: translate(-50%, -50%) scale(1.1); }
+        }
+        @keyframes milestonePulse {
+          0%, 100% { text-shadow: 0 0 20px #00ffcc, 0 0 40px #00ffcc; }
+          50% { text-shadow: 0 0 40px #00ffcc, 0 0 80px #00ffcc, 0 0 120px #00ffcc; }
+        }
+        @keyframes milestoneGoldPulse {
+          0%, 100% { text-shadow: 0 0 15px #ffcc00, 0 0 30px #ffcc00; }
+          50% { text-shadow: 0 0 30px #ffcc00, 0 0 60px #ffcc00, 0 0 90px #ffcc00; }
+        }
+      </style>
+
       <div id="hud-top-left" style="position:absolute;top:16px;left:16px;">
-        <div id="hud-lap" style="color:#00ffcc;font-size:22px;font-weight:bold;text-shadow:0 0 10px #00ffcc;">LAP 1/3</div>
-        <div id="hud-position" style="color:#ffcc00;font-size:18px;margin-top:4px;text-shadow:0 0 8px #ffcc00;">1st / 4</div>
-        <div id="hud-time" style="color:#aaaaff;font-size:16px;margin-top:4px;">00:00</div>
+        <div id="hud-level" style="color:#00ffcc;font-size:22px;font-weight:bold;text-shadow:0 0 10px #00ffcc;">LEVEL 1</div>
+        <div id="hud-distance" style="color:#ffcc00;font-size:18px;margin-top:4px;text-shadow:0 0 8px #ffcc00;">DIST: 0m</div>
+        <div id="hud-time" style="color:#aaaaff;font-size:16px;margin-top:4px;">TIME 00:00</div>
       </div>
 
       <div id="hud-top-right" style="position:absolute;top:16px;right:16px;text-align:right;">
-        <div id="hud-speed" style="color:#ff8800;font-size:20px;font-weight:bold;text-shadow:0 0 8px #ff8800;">60 u/s</div>
+        <div id="hud-speed" style="color:#ff8800;font-size:20px;font-weight:bold;text-shadow:0 0 8px #ff8800;">180 u/s</div>
         <div id="hud-health" style="margin-top:6px;"></div>
       </div>
 
@@ -83,6 +103,41 @@ export class HUD {
         pointer-events:none;
         white-space:nowrap;
       "></div>
+
+      <div id="hud-milestone" style="
+        position:absolute;
+        top:50%;left:50%;
+        transform:translate(-50%,-50%);
+        display:none;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        pointer-events:none;
+        background:rgba(0,5,20,0.75);
+        border:2px solid #00ffcc44;
+        border-radius:16px;
+        padding:32px 64px;
+        text-align:center;
+        min-width:340px;
+        animation: milestoneIn 3s ease forwards;
+      ">
+        <div id="hud-milestone-level" style="
+          color:#00ffcc;
+          font-size:32px;
+          font-weight:bold;
+          letter-spacing:6px;
+          animation: milestonePulse 0.8s ease-in-out infinite;
+        ">LEVEL 5</div>
+        <div id="hud-milestone-subtitle" style="
+          color:#ffcc00;
+          font-size:20px;
+          font-weight:bold;
+          margin-top:10px;
+          letter-spacing:4px;
+          animation: milestoneGoldPulse 0.8s ease-in-out infinite;
+        ">SECTOR 1 CLEARED!</div>
+        <div style="margin-top:16px;color:#445566;font-size:12px;letter-spacing:3px;">KEEP FLYING</div>
+      </div>
 
       <div id="hud-respawn" style="
         position:absolute;
@@ -148,6 +203,7 @@ export class HUD {
     this._pauseEl = el.querySelector('#hud-pause');
     this._respawnEl = el.querySelector('#hud-respawn');
     this._respawnCountEl = el.querySelector('#hud-respawn-count');
+    this._milestoneEl = el.querySelector('#hud-milestone');
 
     // Button hover effects
     ['pause-resume-btn', 'pause-quit-btn'].forEach(id => {
@@ -180,28 +236,53 @@ export class HUD {
     this._pauseEl.style.display = 'none';
   }
 
+  showMilestone(levelName, subtitle) {
+    if (!this._milestoneEl) return;
+    const levelEl = this._milestoneEl.querySelector('#hud-milestone-level');
+    const subEl = this._milestoneEl.querySelector('#hud-milestone-subtitle');
+    if (levelEl) levelEl.textContent = levelName;
+    if (subEl) subEl.textContent = subtitle;
+
+    // Reset animation by cloning
+    this._milestoneEl.style.display = 'flex';
+    // Force reflow to restart animation
+    this._milestoneEl.style.animation = 'none';
+    void this._milestoneEl.offsetWidth;
+    this._milestoneEl.style.animation = 'milestoneIn 3s ease forwards';
+
+    clearTimeout(this._milestoneTimeout);
+    this._milestoneTimeout = setTimeout(() => {
+      this.hideMilestone();
+    }, 3100);
+  }
+
+  hideMilestone() {
+    if (this._milestoneEl) this._milestoneEl.style.display = 'none';
+  }
+
   update(gameState) {
     if (!this.visible) return;
 
-    const { lap, totalLaps, position, totalJets, speed, health, maxHealth, activePowerUp, raceTime, checkpointDir } = gameState;
+    const { level, distance, speed, health, maxHealth, activePowerUp, pendingPowerUp, raceTime } = gameState;
 
-    // Lap
-    const lapEl = this._el.querySelector('#hud-lap');
-    if (lapEl) lapEl.textContent = `LAP ${Math.min(lap + 1, totalLaps)} / ${totalLaps}`;
+    // Level
+    const levelEl = this._el.querySelector('#hud-level');
+    if (levelEl) levelEl.textContent = `LEVEL ${level || 1}`;
 
-    // Position
-    const posEl = this._el.querySelector('#hud-position');
-    if (posEl) posEl.textContent = `${this._ordinal(position)} / ${totalJets}`;
+    // Distance
+    const distEl = this._el.querySelector('#hud-distance');
+    if (distEl) distEl.textContent = `DIST: ${Math.floor(distance || 0)}m`;
 
     // Speed
     const spdEl = this._el.querySelector('#hud-speed');
-    if (spdEl) spdEl.textContent = `${Math.round(speed)} u/s`;
+    if (spdEl) spdEl.textContent = `${Math.round(speed || 0)} u/s`;
 
     // Health
     const hpEl = this._el.querySelector('#hud-health');
     if (hpEl) {
       let hearts = '';
-      for (let i = 0; i < maxHealth; i++) {
+      const max = maxHealth || 3;
+      for (let i = 0; i < max; i++) {
         hearts += `<span style="color:${i < health ? '#ff4444' : '#333'};font-size:20px;text-shadow:${i < health ? '0 0 8px #ff4444' : 'none'};">♥</span>`;
       }
       hpEl.innerHTML = hearts;
@@ -217,13 +298,13 @@ export class HUD {
         puEl.style.color = c;
         puEl.style.textShadow = `0 0 8px ${c}`;
         puEl.textContent = activePowerUp;
-      } else if (gameState.pendingPowerUp) {
+      } else if (pendingPowerUp) {
         const colors = { BOOST: '#ff8800', SHIELD: '#0088ff', MISSILE: '#ff0000', EMP: '#aa00ff', REPAIR: '#00ff44' };
-        const c = colors[gameState.pendingPowerUp] || '#ffffff';
+        const c = colors[pendingPowerUp] || '#ffffff';
         puEl.style.borderColor = c;
         puEl.style.color = c;
         puEl.style.textShadow = `0 0 8px ${c}`;
-        puEl.textContent = `[${gameState.pendingPowerUp}] - SPACE`;
+        puEl.textContent = `[${pendingPowerUp}] - SPACE`;
       } else {
         puEl.style.borderColor = '#444';
         puEl.style.color = '#888';
@@ -235,26 +316,10 @@ export class HUD {
     // Time
     const timeEl = this._el.querySelector('#hud-time');
     if (timeEl) {
-      const mins = Math.floor(raceTime / 60);
-      const secs = Math.floor(raceTime % 60);
-      timeEl.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    }
-
-    // Checkpoint arrow
-    if (this._arrowEl && checkpointDir) {
-      const { screenX, screenY, offscreen } = checkpointDir;
-      if (offscreen) {
-        this._arrowEl.style.display = 'block';
-        const cx = window.innerWidth / 2;
-        const cy = window.innerHeight / 2;
-        const angle = Math.atan2(screenY - cy, screenX - cx);
-        const arrowDist = 120;
-        this._arrowEl.style.left = (cx + Math.cos(angle) * arrowDist) + 'px';
-        this._arrowEl.style.top = (cy + Math.sin(angle) * arrowDist) + 'px';
-        this._arrowEl.style.transform = `translate(-50%,-50%) rotate(${angle + Math.PI / 2}rad)`;
-      } else {
-        this._arrowEl.style.display = 'none';
-      }
+      const t = raceTime || 0;
+      const mins = Math.floor(t / 60);
+      const secs = Math.floor(t % 60);
+      timeEl.textContent = `TIME ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     }
   }
 

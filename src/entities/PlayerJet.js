@@ -1,47 +1,44 @@
 import * as THREE from 'three';
 import { Jet } from './Jet.js';
 
+const MAX_HEIGHT = 185;
+const MIN_HEIGHT = 20;
+const MAX_X = 240;
+
 export class PlayerJet extends Jet {
   constructor(scene, inputManager) {
     super(scene, 0x00ccff);
     this.inputManager = inputManager;
-    this.baseSpeed = 260;
-    this.currentSpeed = 260;
-    this.maxSpeed = 520;
-    this.minSpeed = 80;
+    this.baseSpeed = 180;      // forward speed (increases per level)
+    this.currentSpeed = 180;
+    this.strafeSpeed = 210;    // left/right speed
+    this.verticalSpeed = 165;  // up/down speed
     this.pendingPowerUp = null;
     this.powerUpsCollected = 0;
-    this.consecutiveWins = 0;
-    this.totalWins = 0;
     this._empSlowed = false;
     this._empTimer = 0;
+    this._boostMult = 1.8;
 
-    // Apply speed upgrade if any
+    // Apply upgrades from storage
     try {
       const upgrades = JSON.parse(localStorage.getItem('skystriker_upgrades') || '[]');
-      if (upgrades.includes('speed_1')) this.baseSpeed += 40;
-      if (upgrades.includes('boost_1')) this._boostMult = 2.2;
-      else this._boostMult = 2.0;
-    } catch (e) {
-      this._boostMult = 1.8;
-    }
+      if (upgrades.includes('speed_1')) this.baseSpeed += 30;
+      if (upgrades.includes('boost_1')) this._boostMult = 2.1;
+    } catch(e) {}
+  }
+
+  setLevelSpeed(speed) {
+    this.baseSpeed = speed;
+    this.currentSpeed = speed;
   }
 
   collectPowerUp(type) {
     if (type === 'REPAIR') {
-      this.applyPowerUp(type);
+      this.health = Math.min(this.maxHealth, this.health + 1);
     } else {
       this.pendingPowerUp = type;
     }
     this.powerUpsCollected++;
-  }
-
-  activatePendingPowerUp(allJets) {
-    if (!this.pendingPowerUp) return null;
-    const type = this.pendingPowerUp;
-    this.pendingPowerUp = null;
-    this.applyPowerUp(type);
-    return type;
   }
 
   applyEMP(duration) {
@@ -49,11 +46,8 @@ export class PlayerJet extends Jet {
     this._empTimer = duration;
   }
 
-  update(dt, allJets) {
-    if (!this.alive) {
-      super.update(dt);
-      return;
-    }
+  update(dt) {
+    if (!this.alive) { super.update(dt); return; }
 
     if (this._empSlowed) {
       this._empTimer -= dt;
@@ -63,74 +57,56 @@ export class PlayerJet extends Jet {
     const input = this.inputManager;
     const joystick = input.getJoystick();
 
-    // Determine pitch input
-    let pitchInput = 0;
-    if (input.isDown('KeyW') || input.isDown('ArrowUp')) pitchInput = -1;
-    else if (input.isDown('KeyS') || input.isDown('ArrowDown')) pitchInput = 1;
-    else pitchInput = -joystick.y;
+    // Strafe left/right
+    let strafeX = 0;
+    if (input.isDown('KeyA') || input.isDown('ArrowLeft'))       strafeX = -1;
+    else if (input.isDown('KeyD') || input.isDown('ArrowRight')) strafeX = 1;
+    else if (Math.abs(joystick.x) > 0.1)                        strafeX = joystick.x;
 
-    // Determine yaw input
-    let yawInput = 0;
-    if (input.isDown('KeyA') || input.isDown('ArrowLeft')) yawInput = 1;
-    else if (input.isDown('KeyD') || input.isDown('ArrowRight')) yawInput = -1;
-    else yawInput = -joystick.x;
+    // Up/down
+    let vertY = 0;
+    if (input.isDown('KeyW') || input.isDown('ArrowUp'))         vertY = 1;
+    else if (input.isDown('KeyS') || input.isDown('ArrowDown'))  vertY = -1;
+    else if (Math.abs(joystick.y) > 0.1)                        vertY = -joystick.y;
 
-    // Roll input
-    let rollInput = 0;
-    if (input.isDown('KeyQ')) rollInput = 1;
-    else if (input.isDown('KeyE')) rollInput = -1;
-
-    // Speed
-    const braking = input.isDown('ShiftLeft') || input.isDown('ShiftRight');
-    let targetSpeed = this.baseSpeed;
-    if (this.activePowerUp === 'BOOST') targetSpeed = this.baseSpeed * this._boostMult;
-    if (this._empSlowed) targetSpeed *= 0.5;
-    if (braking) targetSpeed = this.minSpeed;
-    this.currentSpeed += (targetSpeed - this.currentSpeed) * Math.min(1, dt * 3);
-    this.currentSpeed = Math.max(this.minSpeed, Math.min(this.maxSpeed, this.currentSpeed));
-
-    // Apply space - use power-up
+    // Use power-up
     if (input.isDown('Space')) {
       input.keys.delete('Space');
-      this.activatePendingPowerUp(allJets);
+      if (this.pendingPowerUp) {
+        this.applyPowerUp(this.pendingPowerUp);
+        this.pendingPowerUp = null;
+      }
     }
 
-    const ts = this.turnSpeed * dt;
-    const rs = this.rollSpeed * dt;
+    // Forward speed
+    let fwdSpeed = this.baseSpeed;
+    if (this.activePowerUp === 'BOOST') fwdSpeed *= this._boostMult;
+    if (this._empSlowed) fwdSpeed *= 0.5;
+    this.currentSpeed = fwdSpeed;
 
-    // Rotate in local space using quaternion rotations
-    const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), pitchInput * ts);
-    const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yawInput * ts);
-    const qRoll = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), rollInput * rs);
+    // Move
+    this.group.position.z += fwdSpeed * dt;
+    this.group.position.x += strafeX * this.strafeSpeed * dt;
+    this.group.position.y += vertY * this.verticalSpeed * dt;
 
-    this.group.quaternion.multiply(qYaw).multiply(qPitch).multiply(qRoll);
+    // Clamp bounds
+    this.group.position.x = Math.max(-MAX_X, Math.min(MAX_X, this.group.position.x));
+    this.group.position.y = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, this.group.position.y));
 
-    // Move forward in local +Z direction
-    const forward = this.getForwardVector();
-    this.group.position.addScaledVector(forward, this.currentSpeed * dt);
+    // Visual bank and pitch — NO yaw (always face +Z)
+    const targetRoll  = -strafeX * 0.5;
+    const targetPitch = -vertY   * 0.28;
+    this.group.rotation.x += (targetPitch - this.group.rotation.x) * Math.min(1, dt * 7);
+    this.group.rotation.y  = 0;   // NEVER turn back
+    this.group.rotation.z += (targetRoll  - this.group.rotation.z) * Math.min(1, dt * 7);
 
-    // Boundary push
-    const pos = this.group.position;
-    const distFromCenter = pos.length();
-    if (distFromCenter > 2000) {
-      const pushBack = pos.clone().normalize().multiplyScalar(-10 * dt);
-      this.group.position.add(pushBack);
+    // Scale trail with speed
+    if (this._trailL && this._trailR) {
+      const s = Math.min(3, fwdSpeed / 180);
+      this._trailL.scale.z = s;
+      this._trailR.scale.z = s;
     }
 
-    // Hard height ceiling — can't dodge by flying over buildings
-    const MAX_HEIGHT = 185;
-    const MIN_HEIGHT = 15;
-    if (pos.y > MAX_HEIGHT) {
-      pos.y = MAX_HEIGHT;
-      // Redirect pitch downward so the jet curves back down
-      const qDown = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.04);
-      this.group.quaternion.multiply(qDown);
-    }
-    if (pos.y < MIN_HEIGHT) {
-      pos.y = MIN_HEIGHT;
-    }
-
-    this.computeProgress();
     super.update(dt);
   }
 }

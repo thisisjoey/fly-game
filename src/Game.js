@@ -1,9 +1,8 @@
 import * as THREE from 'three';
 import { InputManager } from './InputManager.js';
 import { PlayerJet } from './entities/PlayerJet.js';
-import { AIJet } from './entities/AIJet.js';
-import { Track } from './world/Track.js';
 import { Environment } from './world/Environment.js';
+import { LevelManager } from './systems/LevelManager.js';
 import { MissionSystem } from './systems/MissionSystem.js';
 import { StoreSystem } from './systems/StoreSystem.js';
 import { HUD } from './ui/HUD.js';
@@ -11,14 +10,15 @@ import { Menus } from './ui/Menus.js';
 
 const STATES = {
   MENU: 'MENU',
-  RACING: 'RACING',
+  PLAYING: 'PLAYING',
   PAUSED: 'PAUSED',
+  MILESTONE: 'MILESTONE',
   STORE: 'STORE',
   MISSIONS: 'MISSIONS',
-  RESULTS: 'RESULTS'
+  RESULTS: 'RESULTS',
+  GAME_OVER: 'GAME_OVER'
 };
 
-const TOTAL_LAPS = 3;
 const RACE_COUNTDOWN = 3;
 
 export class Game {
@@ -28,11 +28,9 @@ export class Game {
     this.camera = null;
     this.renderer = null;
     this.input = null;
-    this.track = null;
     this.environment = null;
+    this.levelManager = null;
     this.player = null;
-    this.aiJets = [];
-    this.allJets = [];
     this.hud = null;
     this.menus = null;
     this.missionSystem = null;
@@ -48,19 +46,19 @@ export class Game {
     this._raceEndDelay = 0;
     this._camPos = new THREE.Vector3();
     this._camTarget = new THREE.Vector3();
-    this._explosionParticles = [];  // {mesh, vel, life}
-    this._playerDestroyedThisFrame = false;
+    this._explosionParticles = [];
+    this._milestoneActive = false;
   }
 
   init() {
     // Scene
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0xd8cca8);
-    this.scene.fog = new THREE.Fog(0xd8cca8, 400, 2800);
+    this.scene.fog = new THREE.Fog(0xd8cca8, 600, 3500);
 
     // Camera
-    this.camera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.5, 8000);
-    this.camera.position.set(0, 8, -30);
+    this.camera = new THREE.PerspectiveCamera(88, window.innerWidth / window.innerHeight, 0.5, 8000);
+    this.camera.position.set(0, 112, -50);
 
     // Renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -90,7 +88,7 @@ export class Game {
     // ESC key
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Escape') {
-        if (this.state === STATES.RACING) this._pauseGame();
+        if (this.state === STATES.PLAYING) this._pauseGame();
         else if (this.state === STATES.PAUSED) this._resumeGame();
       }
     });
@@ -150,42 +148,44 @@ export class Game {
   startRace() {
     this._cleanupRace();
 
-    this.state = STATES.RACING;
+    this.state = STATES.PLAYING;
     this.menus.hideAll();
 
     // Build scene
     this.environment = new Environment(this.scene);
-    this.track = new Track(this.scene);
-    this.track.spawnPowerUps();
-    this.track.spawnObstacles();
+
+    // Create level manager
+    this.levelManager = new LevelManager(this.scene);
+    this.levelManager.on('levelUp', (cfg) => {
+      if (this.player) {
+        this.player.setLevelSpeed(cfg.speed);
+      }
+    });
+    this.levelManager.on('milestone', (data) => {
+      this._milestoneActive = true;
+      this.hud.showMilestone(data.name, data.subtitle);
+    });
+    this.levelManager.on('milestoneEnd', () => {
+      this._milestoneActive = false;
+    });
 
     // Create player jet
-    const jetColor = this.storeSystem.getSelectedJetColor();
     this.player = new PlayerJet(this.scene, this.input);
-    this.player.group.position.set(0, 90, -10);
+    this.player.group.position.set(0, 100, 0);
+    this.player.health = 3;
+    this.player.maxHealth = 3;
 
     // Check shield upgrade
     if (this.storeSystem.isPurchased('shield_1')) {
       this.player.shield = true;
     }
 
-    // Create AI jets
-    this.aiJets = [];
-    for (let i = 0; i < 3; i++) {
-      const ai = new AIJet(this.scene, this.track, i, i);
-      ai.group.position.set((i - 1) * 20, 90, -15 + i * 5);
-      this.aiJets.push(ai);
-    }
-
-    this.allJets = [this.player, ...this.aiJets];
-
-    // Set respawn at first checkpoint
-    this.allJets.forEach(j => j.setRespawnAt(this.track.getCheckpointPosition(0)));
+    // Set initial respawn position
+    this.player.setRespawnAt(new THREE.Vector3(0, 100, 0));
 
     // Camera initial
-    this._camPos.copy(this.player.group.position);
-    this._camPos.z -= 25;
-    this._camPos.y += 8;
+    this._camPos.set(0, 112, -50);
+    this._camTarget.set(0, 102, 30);
     this.camera.position.copy(this._camPos);
 
     this._raceTime = 0;
@@ -193,6 +193,7 @@ export class Game {
     this._raceFinished = false;
     this._playerDied = false;
     this._raceEndDelay = 0;
+    this._milestoneActive = false;
 
     // Show HUD
     this.hud.show();
@@ -209,21 +210,18 @@ export class Game {
   }
 
   _cleanupRace() {
-    if (this.track) {
-      this.track.dispose();
-      this.track = null;
+    if (this.levelManager) {
+      this.levelManager.dispose();
+      this.levelManager = null;
     }
+
     if (this.player) {
       this.player.dispose();
       this.player = null;
     }
-    this.aiJets.forEach(ai => ai.dispose());
-    this.aiJets = [];
-    this.allJets = [];
 
     // Remove environment objects by clearing scene
     if (this.environment) {
-      // Remove all non-permanent objects
       const toRemove = [];
       this.scene.traverse(child => {
         if (child !== this.scene && !(child instanceof THREE.Camera)) {
@@ -249,71 +247,25 @@ export class Game {
     });
     this._explosionParticles = [];
 
+    this._milestoneActive = false;
     this.hud.hide();
     this.hud.hidePause();
     this.hud.hideCountdown();
     this.hud.hideRespawnOverlay();
+    this.hud.hideMilestone();
     if (this.input) this.input.hideVirtualControls();
   }
 
   _pauseGame() {
-    if (this.state !== STATES.RACING) return;
+    if (this.state !== STATES.PLAYING) return;
     this.state = STATES.PAUSED;
     this.hud.showPause();
   }
 
   _resumeGame() {
     if (this.state !== STATES.PAUSED) return;
-    this.state = STATES.RACING;
+    this.state = STATES.PLAYING;
     this.hud.hidePause();
-  }
-
-  resetRace() {
-    this.startRace();
-  }
-
-  endRace() {
-    if (this._raceFinished) return;
-    this._raceFinished = true;
-    this._raceEndDelay = 3.0;
-
-    // Calculate position
-    const ranking = this._getRanking();
-    const playerRank = ranking.findIndex(j => j === this.player) + 1;
-    const won = playerRank === 1;
-
-    // Base coins
-    const coinsMap = [500, 350, 200, 100];
-    let coinsEarned = coinsMap[Math.min(playerRank - 1, coinsMap.length - 1)];
-
-    // Mission check
-    const raceStats = {
-      position: playerRank,
-      powerUpsCollected: this.player.powerUpsCollected,
-      died: this._playerDied,
-      won: won
-    };
-    const missionResult = this.missionSystem.checkMissions(raceStats);
-    coinsEarned += missionResult.coinsEarned;
-    this.storeSystem.addCoins(coinsEarned);
-
-    // Show result message
-    const msgs = ['1ST PLACE!', '2ND PLACE!', '3RD PLACE!', '4TH PLACE'];
-    this.hud.showMessage(msgs[Math.min(playerRank - 1, msgs.length - 1)], 3000);
-
-    // Store result for results screen
-    this._pendingResults = {
-      won,
-      position: playerRank,
-      totalJets: this.allJets.length,
-      time: this._raceTime,
-      coinsEarned,
-      completedMissions: missionResult.newlyCompleted
-    };
-  }
-
-  _getRanking() {
-    return [...this.allJets].sort((a, b) => b.progress - a.progress);
   }
 
   _loop(time) {
@@ -328,16 +280,14 @@ export class Game {
   }
 
   _update(dt) {
-    if (this.state === STATES.RACING || this.state === STATES.PAUSED) {
-      if (this.environment) {
-        this.environment.update(dt);
-        if (this.player) {
-          this.environment.updateSpeedEffect(this.player.currentSpeed, 520);
-        }
+    if (this.state === STATES.PLAYING || this.state === STATES.PAUSED || this.state === STATES.MILESTONE) {
+      if (this.environment && this.player) {
+        this.environment.update(dt, this.player.group.position.z);
+        this.environment.updateSpeedEffect(this.player.currentSpeed, 430);
       }
     }
 
-    if (this.state !== STATES.RACING) return;
+    if (this.state !== STATES.PLAYING) return;
 
     // Countdown logic
     if (!this._raceStarted) {
@@ -376,12 +326,12 @@ export class Game {
 
     this._raceTime += dt;
 
-    // Update explosions always
+    // Update explosions
     this._updateExplosions(dt);
 
     // Update player
     if (this.player) {
-      this.player.update(dt, this.allJets);
+      this.player.update(dt);
 
       // Show respawn countdown while dead
       if (!this.player.alive && this.player.respawnTimer > 0) {
@@ -391,28 +341,13 @@ export class Game {
       }
     }
 
-    // Update AI jets
-    this.aiJets.forEach(ai => {
-      ai.update(dt, this.player ? this.player.group.position : new THREE.Vector3(), this.allJets);
-    });
-
-    // Update track
-    if (this.track) {
-      this.track.update(dt);
-      // Sync active checkpoint to player
-      if (this.player) {
-        this.track.setActiveCheckpoint(this.player.checkpointIndex);
-      }
+    // Update level manager
+    if (this.levelManager && this.player) {
+      this.levelManager.update(dt, this.player.group.position);
     }
 
     // Collision detection
     this._checkCollisions();
-
-    // Checkpoint detection
-    this._checkCheckpoints();
-
-    // Update rankings
-    this.allJets.forEach(j => j.computeProgress());
 
     // Update camera
     this._updateCamera(dt);
@@ -422,51 +357,54 @@ export class Game {
   }
 
   _checkCollisions() {
-    if (!this.player || !this.player.alive) return;
+    if (!this.player || !this.player.alive || !this.levelManager) return;
+
     const playerPos = this.player.group.position;
     const playerRadius = 5;
 
-    // Power-ups
-    if (this.track) {
-      this.track.powerUps.forEach(pu => {
-        if (pu.collected) return;
-        const dist = playerPos.distanceTo(pu.getPosition());
-        if (dist < playerRadius + pu.radius) {
-          pu.collect();
-          this.player.collectPowerUp(pu.type);
-          this.hud.showMessage(`${pu.type} COLLECTED!`, 1200);
-        }
-      });
+    const { buildings, missiles, powerUps } = this.levelManager.getActiveObjects();
 
-      // Obstacle collision — instant destroy
-      this.track.obstacles.forEach(ob => {
-        if (ob.collected || !this.player.alive) return;
-        const dist = playerPos.distanceTo(ob.getPosition());
-        if (dist < playerRadius + ob.radius) {
-          if (!this.player._lastHitTime || Date.now() - this.player._lastHitTime > 600) {
-            this.player._lastHitTime = Date.now();
-            this._destroyPlayer();
-          }
-        }
-      });
-    }
+    // Player vs buildings (AABB check)
+    for (const building of buildings) {
+      // Broad phase: only check buildings near player in Z
+      if (Math.abs(building.posZ - playerPos.z) > building.depth / 2 + playerRadius + 10) continue;
 
-    // Building collision — check against stored building bounds
-    if (this.environment && this.player.alive) {
-      const buildings = this.environment.getBuildingData();
-      for (const b of buildings) {
-        const dx = Math.abs(playerPos.x - b.x);
-        const dz = Math.abs(playerPos.z - b.z);
-        // Quick broad-phase reject
-        if (dx > b.w * 0.5 + playerRadius + 15 || dz > b.d * 0.5 + playerRadius + 15) continue;
-        // Narrow-phase: inside the building footprint and below its top
-        if (dx < b.w * 0.5 + playerRadius &&
-            dz < b.d * 0.5 + playerRadius &&
-            playerPos.y < b.h + playerRadius &&
-            playerPos.y > 0) {
+      const aabb = building.getAABB();
+      if (
+        playerPos.x > aabb.minX - playerRadius &&
+        playerPos.x < aabb.maxX + playerRadius &&
+        playerPos.y > aabb.minY - playerRadius &&
+        playerPos.y < aabb.maxY + playerRadius &&
+        playerPos.z > aabb.minZ - playerRadius &&
+        playerPos.z < aabb.maxZ + playerRadius
+      ) {
+        if (!this.player._lastHitTime || Date.now() - this.player._lastHitTime > 600) {
+          this.player._lastHitTime = Date.now();
           this._destroyPlayer();
           break;
         }
+      }
+    }
+
+    // Player vs missiles (sphere check)
+    for (const missile of missiles) {
+      if (!missile.alive) continue;
+      const dist = playerPos.distanceTo(missile.getPosition());
+      if (dist < playerRadius + missile.radius) {
+        missile.dispose();
+        this._destroyPlayer();
+        break;
+      }
+    }
+
+    // Player vs power-ups (sphere check)
+    for (const pu of powerUps) {
+      if (pu.collected) continue;
+      const dist = playerPos.distanceTo(pu.getPosition());
+      if (dist < playerRadius + 12) {
+        pu.collect();
+        this.player.collectPowerUp(pu.type);
+        this.hud.showMessage(`${pu.type} COLLECTED!`, 1200);
       }
     }
   }
@@ -493,22 +431,38 @@ export class Game {
       this.hud.showMessage('GAME OVER!', 99999);
       this._raceFinished = true;
       this._raceEndDelay = 3.0;
+
+      const levelConfig = this.levelManager ? this.levelManager.getCurrentLevel() : { level: 1 };
+      const dist = this.levelManager ? Math.floor(this.levelManager.distanceTraveled) : 0;
+
+      // Mission check
+      const raceStats = {
+        position: 1,
+        powerUpsCollected: this.player.powerUpsCollected,
+        died: this._playerDied,
+        won: false
+      };
+      const missionResult = this.missionSystem.checkMissions(raceStats);
+      const coinsEarned = Math.floor(dist / 100) * 10 + missionResult.coinsEarned;
+      this.storeSystem.addCoins(coinsEarned);
+
       this._pendingResults = {
         won: false,
-        position: this._getRanking().findIndex(j => j === this.player) + 1,
-        totalJets: this.allJets.length,
+        position: 1,
+        totalJets: 1,
         time: this._raceTime,
-        coinsEarned: 0,
-        completedMissions: []
+        coinsEarned,
+        completedMissions: missionResult.newlyCompleted,
+        level: levelConfig.level,
+        distance: dist
       };
       return;
     }
 
-    // Respawn after 3 seconds at last checkpoint
+    // Respawn after 3 seconds at current position (slightly ahead)
+    const respawnZ = this.player.group.position.z + 50;
     this.player.respawnTimer = 3.0;
-    this.player.setRespawnAt(this.track.getCheckpointPosition(
-      Math.max(0, this.player.checkpointIndex)
-    ));
+    this.player.setRespawnAt(new THREE.Vector3(0, 100, respawnZ));
     this.hud.showRespawnOverlay(3);
   }
 
@@ -553,110 +507,45 @@ export class Game {
     });
   }
 
-  _checkCheckpoints() {
-    if (!this.track) return;
-
-    this.allJets.forEach(jet => {
-      if (!jet.alive) return;
-      const cpPos = this.track.getCheckpointPosition(jet.checkpointIndex);
-      const dist = jet.group.position.distanceTo(cpPos);
-
-      if (dist < 70) {
-        // Dot product check - jet should be moving toward/through checkpoint
-        const fwd = jet.getForwardVector();
-        const toCP = cpPos.clone().sub(jet.group.position).normalize();
-        const dot = fwd.dot(toCP);
-
-        if (dot > -0.5) { // not flying away from it
-          jet.setRespawnAt(cpPos.clone());
-          const lapCompleted = this.track.advanceCheckpoint(jet);
-
-          if (jet === this.player) {
-            if (lapCompleted) {
-              if (this.player.lap >= TOTAL_LAPS) {
-                this.endRace();
-              } else {
-                this.hud.showMessage(`LAP ${this.player.lap + 1}!`, 2000);
-              }
-            } else {
-              this.hud.showMessage(`CHECKPOINT ${this.player.checkpointIndex}`, 800);
-            }
-          } else {
-            // AI completed race
-            if (lapCompleted && jet.lap >= TOTAL_LAPS && !this._raceFinished) {
-              this.endRace();
-            }
-          }
-        }
-      }
-    });
-  }
-
   _updateCamera(dt) {
     if (!this.player) return;
 
-    const jetPos = this.player.group.position;
-    const back = this.player.getBackwardVector();
-    const up = new THREE.Vector3(0, 1, 0);
-    const jetUp = new THREE.Vector3(0, 1, 0).applyQuaternion(this.player.group.quaternion);
-    const blendedUp = up.clone().lerp(jetUp, 0.25).normalize();
+    const px = this.player.group.position.x;
+    const py = this.player.group.position.y;
+    const pz = this.player.group.position.z;
 
-    // Pull camera further back at higher speeds for rush feel
-    const speedRatio = Math.min(1, (this.player.currentSpeed || 260) / 520);
-    const camDist = 45 + speedRatio * 20;
-    const camHeight = 10 + speedRatio * 4;
-
-    const targetCamPos = jetPos.clone()
-      .addScaledVector(back, camDist)
-      .addScaledVector(blendedUp, camHeight);
+    // Fixed offset behind and above player
+    const targetCamPos = new THREE.Vector3(px, py + 12, pz - 50);
+    const targetLookAt = new THREE.Vector3(px, py + 2, pz + 30);
 
     this._camPos.lerp(targetCamPos, Math.min(1, dt * 8));
-    this.camera.position.copy(this._camPos);
+    this._camTarget.lerp(targetLookAt, Math.min(1, dt * 10));
 
-    const lookTarget = jetPos.clone().addScaledVector(this.player.getForwardVector(), 35);
-    this._camTarget.lerp(lookTarget, Math.min(1, dt * 10));
+    this.camera.position.copy(this._camPos);
     this.camera.lookAt(this._camTarget);
 
-    // Dynamic FOV — widens at high speed / boost for rush feel
+    // Dynamic FOV: 88 + (speed/400) * 15, max 105 when boosting
     const isBoosting = this.player.activePowerUp === 'BOOST';
-    const targetFOV = isBoosting ? 110 : 90 + speedRatio * 12;
+    const speedRatio = Math.min(1, (this.player.currentSpeed || 180) / 430);
+    const targetFOV = isBoosting ? 105 : 88 + speedRatio * 15;
     this.camera.fov += (targetFOV - this.camera.fov) * Math.min(1, dt * 4);
     this.camera.updateProjectionMatrix();
   }
 
   _updateHUD() {
-    if (!this.player || !this.track) return;
+    if (!this.player || !this.levelManager) return;
 
-    const ranking = this._getRanking();
-    const playerRank = ranking.findIndex(j => j === this.player) + 1;
-
-    // Checkpoint direction for arrow indicator
-    const cpPos = this.track.getCheckpointPosition(this.player.checkpointIndex);
-    const cpVec = cpPos.clone().sub(this.player.group.position);
-    const dist = cpVec.length();
-
-    let checkpointDir = null;
-    if (dist > 150) {
-      // Project to screen
-      const cpScreen = cpPos.clone().project(this.camera);
-      const screenX = (cpScreen.x * 0.5 + 0.5) * window.innerWidth;
-      const screenY = (-cpScreen.y * 0.5 + 0.5) * window.innerHeight;
-      const offscreen = cpScreen.x < -1 || cpScreen.x > 1 || cpScreen.y < -1 || cpScreen.y > 1 || cpScreen.z > 1;
-      checkpointDir = { screenX, screenY, offscreen };
-    }
+    const levelConfig = this.levelManager.getCurrentLevel();
 
     this.hud.update({
-      lap: this.player.lap,
-      totalLaps: TOTAL_LAPS,
-      position: playerRank,
-      totalJets: this.allJets.length,
+      level: levelConfig.level,
+      distance: this.levelManager.distanceTraveled,
       speed: this.player.currentSpeed,
       health: this.player.health,
       maxHealth: this.player.maxHealth,
       activePowerUp: this.player.activePowerUp,
       pendingPowerUp: this.player.pendingPowerUp,
-      raceTime: this._raceTime,
-      checkpointDir
+      raceTime: this._raceTime
     });
   }
 
