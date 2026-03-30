@@ -396,10 +396,27 @@ export class Game {
 
     const playerPos = this.player.group.position;
     const playerRadius = 5;
+    const isInvincible = this.player.invincibleTimer > 0 || this.player.activePowerUp === 'SHIELD';
 
     const { buildings, missiles, powerUps } = this.levelManager.getActiveObjects();
 
-    // Player vs buildings (AABB check)
+    // Player vs buildings (AABB check) — skipped during invincibility or shield
+    if (isInvincible) {
+      // Only collect power-ups while invincible
+      const puFlashColors = { BOOST: 0xff7700, SHIELD: 0x0099ff, MISSILE: 0xff2200, EMP: 0xbb00ff, REPAIR: 0x00ee44 };
+      for (const pu of powerUps) {
+        if (pu.collected) continue;
+        const dist = playerPos.distanceTo(pu.getPosition());
+        if (dist < playerRadius + 12) {
+          pu.collect();
+          this.player.collectPowerUp(pu.type);
+          this.hud.showMessage(`${pu.type} COLLECTED!`, 1200);
+          this.hud.showFlash(puFlashColors[pu.type] || 0xffffff, 0.5);
+        }
+      }
+      return;
+    }
+
     for (const building of buildings) {
       // Broad phase: only check buildings near player in Z
       if (Math.abs(building.posZ - playerPos.z) > building.depth / 2 + playerRadius + 10) continue;
@@ -584,7 +601,8 @@ export class Game {
       pendingPowerUp: this.player.pendingPowerUp,
       powerUpTimer: this.player.powerUpTimer,
       powerUpMaxTimer: this.player.powerUpMaxTimer,
-      raceTime: this._raceTime
+      raceTime: this._raceTime,
+      invincibleTimer: this.player.invincibleTimer
     });
   }
 

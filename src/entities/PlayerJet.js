@@ -90,7 +90,7 @@ export class PlayerJet extends Jet {
 
     // Forward speed
     let fwdSpeed = this.baseSpeed;
-    if (this.activePowerUp === 'BOOST') fwdSpeed *= this._boostMult;
+    if (this.activePowerUp === 'BOOST' || this.activePowerUp === 'SHIELD') fwdSpeed *= this._boostMult;
     if (this._empSlowed) fwdSpeed *= 0.5;
     this.currentSpeed = fwdSpeed;
 

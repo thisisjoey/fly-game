@@ -22,8 +22,11 @@ export class Jet {
     this.respawnPosition = new THREE.Vector3();
     this.flashTimer = 0;
     this._originalEmissives = [];
+    this._originalOpacities = [];
     this.velocity = new THREE.Vector3();
     this.dead = false;
+    this.invincibleTimer = 0;
+    this._invinciblePhase = 0;
 
     this.createModel(color);
     scene.add(this.group);
@@ -165,6 +168,17 @@ export class Jet {
         });
       }
     });
+
+    // Collect original opacity values for invincibility ghost effect
+    this.group.traverse(child => {
+      if (child.isMesh && child !== this._shieldSolid && child !== this._shieldWire) {
+        this._originalOpacities.push({
+          mesh: child,
+          opacity: child.material.opacity !== undefined ? child.material.opacity : 1.0,
+          transparent: child.material.transparent || false
+        });
+      }
+    });
   }
 
   takeDamage(amount) {
@@ -297,6 +311,36 @@ export class Jet {
         this.group.rotation.set(0, 0, 0);
         this.velocity.set(0, 0, 0);
         this.group.visible = true;
+        this.invincibleTimer = 5.0;
+        this._invinciblePhase = 0;
+      }
+    }
+
+    // Invincibility ghost flicker effect
+    if (this.invincibleTimer > 0) {
+      this.invincibleTimer -= dt;
+      this._invinciblePhase += dt * 14;
+      const flicker = 0.2 + 0.6 * Math.abs(Math.sin(this._invinciblePhase));
+      this._originalOpacities.forEach(({ mesh }) => {
+        mesh.material.transparent = true;
+        mesh.material.opacity = flicker;
+        if (mesh.material.emissive) {
+          mesh.material.emissive.setHex(0x4499ff);
+          mesh.material.emissiveIntensity = 1.2;
+        }
+      });
+      if (this.invincibleTimer <= 0) {
+        // Restore original opacity and emissive
+        this._originalOpacities.forEach(({ mesh, opacity, transparent }) => {
+          mesh.material.transparent = transparent;
+          mesh.material.opacity = opacity;
+        });
+        this._originalEmissives.forEach(({ mesh, emissive }) => {
+          if (mesh.material && mesh.material.emissive) {
+            mesh.material.emissive.copy(emissive);
+            mesh.material.emissiveIntensity = 1.0;
+          }
+        });
       }
     }
   }

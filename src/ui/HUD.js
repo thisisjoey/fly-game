@@ -59,6 +59,10 @@ export class HUD {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.7; }
         }
+        @keyframes ghostPulse {
+          0%, 100% { box-shadow: 0 0 12px #4499ff, 0 0 24px #4499ff44; border-color: #4499ff; }
+          50% { box-shadow: 0 0 24px #4499ff, 0 0 48px #4499ffaa; border-color: #88ccff; }
+        }
       </style>
 
       <div id="hud-controls-hint" style="
@@ -211,6 +215,29 @@ export class HUD {
         <div style="color:#ffaa44;font-size:20px;margin-top:8px;letter-spacing:2px;">RESPAWNING...</div>
       </div>
 
+      <div id="hud-invincible" style="
+        position:absolute;
+        top:50%;left:50%;
+        transform:translate(-50%, -180%);
+        display:none;
+        flex-direction:column;
+        align-items:center;
+        pointer-events:none;
+        background:rgba(0,10,40,0.82);
+        border:2px solid #4499ff;
+        border-radius:12px;
+        padding:10px 28px;
+        text-align:center;
+        animation: ghostPulse 0.6s ease-in-out infinite;
+      ">
+        <div style="color:#88ccff;font-size:13px;letter-spacing:3px;font-weight:bold;">GHOST MODE</div>
+        <div style="display:flex;align-items:baseline;gap:6px;margin-top:2px;">
+          <span id="hud-invincible-count" style="color:#ffffff;font-size:36px;font-weight:bold;text-shadow:0 0 16px #4499ff;line-height:1;">5</span>
+          <span style="color:#4499ff;font-size:14px;letter-spacing:1px;">s</span>
+        </div>
+        <div style="color:#4477aa;font-size:10px;letter-spacing:2px;margin-top:2px;">PASSING THROUGH</div>
+      </div>
+
       <div id="hud-pause" style="
         position:absolute;
         top:0;left:0;width:100%;height:100%;
@@ -269,6 +296,8 @@ export class HUD {
     this._puBarWrap = el.querySelector('#hud-pu-bar-wrap');
     this._puBar    = el.querySelector('#hud-pu-bar');
     this._puHint   = el.querySelector('#hud-pu-hint');
+    this._invincibleEl = el.querySelector('#hud-invincible');
+    this._invincibleCountEl = el.querySelector('#hud-invincible-count');
 
     // Button hover effects
     ['pause-resume-btn', 'pause-quit-btn'].forEach(id => {
@@ -339,7 +368,17 @@ export class HUD {
   update(gameState) {
     if (!this.visible) return;
 
-    const { level, distance, speed, health, maxHealth, activePowerUp, pendingPowerUp, powerUpTimer, powerUpMaxTimer, raceTime } = gameState;
+    const { level, distance, speed, health, maxHealth, activePowerUp, pendingPowerUp, powerUpTimer, powerUpMaxTimer, raceTime, invincibleTimer } = gameState;
+
+    // Invincibility ghost timer
+    if (this._invincibleEl) {
+      if (invincibleTimer > 0) {
+        this._invincibleEl.style.display = 'flex';
+        if (this._invincibleCountEl) this._invincibleCountEl.textContent = Math.ceil(invincibleTimer);
+      } else {
+        this._invincibleEl.style.display = 'none';
+      }
+    }
 
     // Level
     const levelEl = this._el.querySelector('#hud-level');
