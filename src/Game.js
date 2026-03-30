@@ -370,7 +370,7 @@ export class Game {
 
       // Show respawn countdown while dead
       if (!this.player.alive && this.player.respawnTimer > 0) {
-        this.hud.showRespawnOverlay(this.player.respawnTimer);
+        this.hud.showRespawnOverlay(this.player.respawnTimer, this.player.health);
       } else if (this.player.alive) {
         this.hud.hideRespawnOverlay();
       }
